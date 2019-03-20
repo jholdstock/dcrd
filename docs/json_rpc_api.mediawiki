@@ -1,3 +1,5 @@
+{{toclimit|limit=1}}
+
 ==1. Overview==
 
 dcrd provides a [http://json-rpc.org/wiki/specification JSON-RPC] API that is
