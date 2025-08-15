@@ -23,8 +23,8 @@ for module in $MODULES; do
   (
     cd $MODNAME
 
-    # run tests
-    go test -short -tags rpcserver ./... -- "$@"
+    # run tests (CGO is required for mixing tests).
+    CGO_ENABLED="1" go test -short -tags rpcserver ./... -- "$@"
   )
 done
 
