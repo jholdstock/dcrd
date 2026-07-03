@@ -216,6 +216,7 @@ var rpcHandlersBeforeInit = map[types.Method]commandHandler{
 	"getnetworkinfo":        handleGetNetworkInfo,
 	"getpeerinfo":           handleGetPeerInfo,
 	"getrawmempool":         handleGetRawMempool,
+	"getrecentmixes":        handleGetRecentMixes,
 	"getrawtransaction":     handleGetRawTransaction,
 	"getstakedifficulty":    handleGetStakeDifficulty,
 	"getstakeversioninfo":   handleGetStakeVersionInfo,
@@ -385,6 +386,7 @@ var rpcLimited = map[string]struct{}{
 	"getnetworkhashps":     {},
 	"getnetworkinfo":       {},
 	"getrawmempool":        {},
+	"getrecentmixes":       {},
 	"getstakedifficulty":   {},
 	"getstakeversioninfo":  {},
 	"getstakeversions":     {},
@@ -2664,6 +2666,28 @@ func handleGetMixMessage(_ context.Context, s *Server, cmd any) (any, error) {
 		Message: buf.String(),
 	}
 	return &result, nil
+}
+
+// handleGetRecentMixes implements the getrecentmixes command, returning
+// summaries of recently completed mixes that this node observed confirming
+// on-chain, ordered from most to least recent.
+func handleGetRecentMixes(_ context.Context, s *Server, _ any) (any, error) {
+	mixes := s.cfg.MixPooler.RecentMixes()
+
+	res := make([]types.GetRecentMixesResult, 0, len(mixes))
+	for i := len(mixes) - 1; i >= 0; i-- {
+		m := &mixes[i]
+		res = append(res, types.GetRecentMixesResult{
+			TxHash:       m.TxHash.String(),
+			MixAmount:    m.MixAmount,
+			Participants: uint32(m.Participants),
+			MixedOutputs: uint32(m.MixedOutputs),
+			MixedValue:   m.MixedValue,
+			Completed:    m.Completed.Unix(),
+		})
+	}
+
+	return res, nil
 }
 
 // handleGetMixpoolInfo implements the getmixpoolinfo command, returning the

@@ -216,7 +216,39 @@ type Pool struct {
 	feeRate     int64
 	params      *chaincfg.Params
 
+	// recentMixes records summaries of recently completed mixes that this
+	// node observed confirming on-chain.  It is bounded to the most recent
+	// maxRecentMixes entries, ordered oldest to newest, and protected by mtx.
+	recentMixes []MixSummary
+
 	observer *Observer
+}
+
+// maxRecentMixes is the maximum number of completed mix summaries retained by
+// the pool.
+const maxRecentMixes = 100
+
+// MixSummary summarizes a completed mix that resulted in a mined coinjoin
+// transaction.
+type MixSummary struct {
+	// TxHash is the hash of the mined coinjoin transaction.
+	TxHash chainhash.Hash
+
+	// MixAmount is the value of each mixed output, in atoms.
+	MixAmount int64
+
+	// Participants is the number of pair requests that formed the mix.
+	Participants int
+
+	// MixedOutputs is the number of mixed outputs (those of value MixAmount)
+	// in the coinjoin transaction.
+	MixedOutputs int
+
+	// MixedValue is the total value of the mixed outputs, in atoms.
+	MixedValue int64
+
+	// Completed is the time at which the node observed the mix confirming.
+	Completed time.Time
 }
 
 // UtxoEntry provides details regarding unspent transaction outputs.
@@ -734,6 +766,7 @@ func (p *Pool) RemoveSpentPRs(txs []*wire.MsgTx) {
 		txHash := tx.TxHash()
 		ses, ok := p.sessionsByTxHash[txHash]
 		if ok {
+			p.recordCompletedMix(ses, tx)
 			p.observer.removeStrikesForMix(tx)
 			p.removeSession(ses.sid, &txHash, true)
 			continue
@@ -749,6 +782,58 @@ func (p *Pool) RemoveSpentPRs(txs []*wire.MsgTx) {
 			}
 		}
 	}
+}
+
+// recordCompletedMix appends a summary of a completed mix to the bounded
+// recent mixes buffer.  The session's pair requests must still be present in
+// the pool, so this must be called before the session is removed.  The caller
+// must hold the pool mutex.
+func (p *Pool) recordCompletedMix(ses *session, tx *wire.MsgTx) {
+	// The mix denomination is shared by every pair request in the session.
+	var mixAmount int64
+	for _, prHash := range ses.prs {
+		if pr := p.prs[prHash]; pr != nil {
+			mixAmount = pr.MixAmount
+			break
+		}
+	}
+
+	// Mixed outputs are those of the mix denomination; remaining outputs are
+	// change.
+	var mixedOutputs int
+	var mixedValue int64
+	if mixAmount > 0 {
+		for _, out := range tx.TxOut {
+			if out.Value == mixAmount {
+				mixedOutputs++
+				mixedValue += out.Value
+			}
+		}
+	}
+
+	p.recentMixes = append(p.recentMixes, MixSummary{
+		TxHash:       tx.TxHash(),
+		MixAmount:    mixAmount,
+		Participants: len(ses.prs),
+		MixedOutputs: mixedOutputs,
+		MixedValue:   mixedValue,
+		Completed:    time.Now().UTC(),
+	})
+	if len(p.recentMixes) > maxRecentMixes {
+		n := copy(p.recentMixes, p.recentMixes[len(p.recentMixes)-maxRecentMixes:])
+		p.recentMixes = p.recentMixes[:n]
+	}
+}
+
+// RecentMixes returns summaries of recently completed mixes that this node
+// observed confirming on-chain, ordered from oldest to newest.
+func (p *Pool) RecentMixes() []MixSummary {
+	p.mtx.RLock()
+	defer p.mtx.RUnlock()
+
+	res := make([]MixSummary, len(p.recentMixes))
+	copy(res, p.recentMixes)
+	return res
 }
 
 // NonMixSpendsPR returns whether a transaction (that is not known to be the

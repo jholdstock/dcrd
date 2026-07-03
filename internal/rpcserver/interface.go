@@ -668,6 +668,10 @@ type MixPooler interface {
 
 	// Epoch returns the duration between mix epochs.
 	Epoch() time.Duration
+
+	// RecentMixes returns summaries of recently completed mixes ordered from oldest to newest. Only that mixes this
+	// node observed confirming on-chain. A well-connected, long-running node catches essentially all of them.
+	RecentMixes() []mixpool.MixSummary
 }
 
 // TxIndexer provides an interface for retrieving details for a given

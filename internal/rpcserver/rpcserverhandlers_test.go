@@ -1181,10 +1181,11 @@ func (mp *testTxMempooler) TSpendHashes() []chainhash.Hash {
 // testMixPooler provides a mock mixpool by implementing the MixPooler
 // interface.
 type testMixPooler struct {
-	mixPRs     []*wire.MsgMixPairReq
-	message    mixing.Message
-	messageErr error
-	epoch      time.Duration
+	mixPRs      []*wire.MsgMixPairReq
+	message     mixing.Message
+	messageErr  error
+	epoch       time.Duration
+	recentMixes []mixpool.MixSummary
 }
 
 // MixPRs returns a mocked slice of MixPR messages.
@@ -1200,6 +1201,11 @@ func (mp *testMixPooler) Message(query *chainhash.Hash) (mixing.Message, error) 
 // Epoch returns a mocked duration between mix epochs.
 func (mp *testMixPooler) Epoch() time.Duration {
 	return mp.epoch
+}
+
+// RecentMixes returns a mocked duration between mix epochs.
+func (mp *testMixPooler) RecentMixes() []mixpool.MixSummary {
+	return mp.recentMixes
 }
 
 // testNtfnManager provides a mock notification manager by implementing the

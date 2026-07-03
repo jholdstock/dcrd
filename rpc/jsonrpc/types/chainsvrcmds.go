@@ -574,6 +574,15 @@ func NewGetMixpoolInfoCmd() *GetMixpoolInfoCmd {
 	return &GetMixpoolInfoCmd{}
 }
 
+// GetRecentMixesCmd defines the getrecentmixes JSON-RPC command.
+type GetRecentMixesCmd struct{}
+
+// NewGetRecentMixesCmd returns a new instance which can be used to issue a
+// getrecentmixes JSON-RPC command.
+func NewGetRecentMixesCmd() *GetRecentMixesCmd {
+	return &GetRecentMixesCmd{}
+}
+
 // GetNetworkInfoCmd defines the getnetworkinfo JSON-RPC command.
 type GetNetworkInfoCmd struct{}
 
@@ -1191,6 +1200,7 @@ func init() {
 	dcrjson.MustRegister(Method("getpeerinfo"), (*GetPeerInfoCmd)(nil), flags)
 	dcrjson.MustRegister(Method("getrawmempool"), (*GetRawMempoolCmd)(nil), flags)
 	dcrjson.MustRegister(Method("getrawtransaction"), (*GetRawTransactionCmd)(nil), flags)
+	dcrjson.MustRegister(Method("getrecentmixes"), (*GetRecentMixesCmd)(nil), flags)
 	dcrjson.MustRegister(Method("getstakedifficulty"), (*GetStakeDifficultyCmd)(nil), flags)
 	dcrjson.MustRegister(Method("getstakeversioninfo"), (*GetStakeVersionInfoCmd)(nil), flags)
 	dcrjson.MustRegister(Method("getstakeversions"), (*GetStakeVersionsCmd)(nil), flags)

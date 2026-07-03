@@ -234,6 +234,17 @@ type GetMiningInfoResult struct {
 	TestNet          bool    `json:"testnet"`
 }
 
+// GetRecentMixesResult models a single completed mix from the getrecentmixes
+// command.
+type GetRecentMixesResult struct {
+	TxHash       string `json:"txhash"`
+	MixAmount    int64  `json:"mixamount"`
+	Participants uint32 `json:"participants"`
+	MixedOutputs uint32 `json:"mixedoutputs"`
+	MixedValue   int64  `json:"mixedvalue"`
+	Completed    int64  `json:"completed"`
+}
+
 // GetMixMessageResult models the data from the getmixmessage command.
 type GetMixMessageResult struct {
 	Type    string `json:"type"`

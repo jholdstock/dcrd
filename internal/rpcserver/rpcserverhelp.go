@@ -1015,6 +1015,7 @@ var rpcResultTypes = map[types.Method][]any{
 	"getmininginfo":         {(*types.GetMiningInfoResult)(nil)},
 	"getmixmessage":         {(*types.GetMixMessageResult)(nil)},
 	"getmixpoolinfo":        {(*types.GetMixpoolInfoResult)(nil)},
+	"getrecentmixes":        {(*[]types.GetRecentMixesResult)(nil)},
 	"getnettotals":          {(*types.GetNetTotalsResult)(nil)},
 	"getnetworkhashps":      {(*int64)(nil)},
 	"getnetworkinfo":        {(*[]types.GetNetworkInfoResult)(nil)},

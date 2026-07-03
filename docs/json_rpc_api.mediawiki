@@ -300,6 +300,10 @@ the method name for further details such as parameter and return information.
 |Y
 |Returns information about a transaction given its hash.
 |-
+|[[#getrecentmixes|getrecentmixes]]
+|Y
+|Returns summaries of recently completed mixes that this node observed confirming on-chain.
+|-
 |[[#getstakedifficulty|getstakedifficulty]]
 |Y
 |Returns the proof-of-stake difficulty.
@@ -1880,6 +1884,34 @@ of the best block.
 
 ; For other transactions
 : <code>{"hex": "0100000001d49ef217dc453ae543f5a20909583b8466452967cf82f66093c5364c58dca6b30...", "txid": "f1d21c62f4444c5fb0d68d1f75109ad8fb44bbf3bf08b275eb08aec55bdb22f9", "version": 1, "locktime": 0, "expiry": 0, "vin": [{"txid": "b3a6dc584c36c59360f682cf67294566843b580909a2f543e53a45dc17f29ed4", "vout": 2, "tree": 1, "sequence": 4294967295, "amountin": 85.23317042, "blockheight": 561882, "blockindex": 2, "scriptSig": {"asm": "30440220088e38e24ce1cd863389a5790221d6c71879d4fc21e86b97ee345ce6e18a3b54022...", "hex": "4730440220088e38e24ce1cd863389a5790221d6c71879d4fc21e86b97ee345ce6e18a3b540..."}}, ...], "vout": [{"value": 0.00485517, "n": 0, "version": 0, "scriptPubKey": {"asm": "OP_DUP OP_HASH160 fe420208bf2d1bbb40b9ee27a11ca0061d45e35c OP_EQUALVERIFY OP_CHECKSIG", "hex": "76a914fe420208bf2d1bbb40b9ee27a11ca0061d45e35c88ac", "reqSigs": 1, "type": "pubkeyhash", "addresses": ["Dsa5TDxF5X8oSQnekqYUHZpFbXWKJKR6Lj3"], "version": 0}}, ...], "blockhash": "000000453c04c1dc6925704c396573cbf627c3c35134d4cae38495d959412ae3", "blockheight": 561917, "blockindex": 1, "confirmations": 29, "time": 1606035418, "blocktime": 1606035418}</code>
+|}
+
+----
+
+====getrecentmixes====
+{|
+!Method
+|getrecentmixes
+|-
+!Parameters
+|None
+|-
+!Description
+|
+: Returns summaries of recently completed mixes that this node observed confirming on-chain, ordered from most to least recent.
+: The summaries are kept in memory only, are limited to the most recent completed mixes, and include only mixes whose sessions this node observed while running.
+|-
+!Returns
+|<code>(json array of object)</code>
+: <code>txhash</code>: <code>(string)</code> The hash of the mined coinjoin transaction.
+: <code>mixamount</code>: <code>(numeric)</code> The value of each mixed output, in atoms.
+: <code>participants</code>: <code>(numeric)</code> The number of pair requests that formed the mix.
+: <code>mixedoutputs</code>: <code>(numeric)</code> The number of mixed outputs in the coinjoin transaction.
+: <code>mixedvalue</code>: <code>(numeric)</code> The total value of the mixed outputs, in atoms.
+: <code>completed</code>: <code>(numeric)</code> The Unix timestamp at which the node observed the mix confirming.
+|-
+!Example Return
+|<code>[{"txhash":"f1d21c62...","mixamount":100000000,"participants":8,"mixedoutputs":8,"mixedvalue":800000000,"completed":1751049600}]</code>
 |}
 
 ----
