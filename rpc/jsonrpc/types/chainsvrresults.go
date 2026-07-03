@@ -238,6 +238,7 @@ type GetMiningInfoResult struct {
 // command.
 type GetRecentMixesResult struct {
 	TxHash       string `json:"txhash"`
+	Height       uint32 `json:"height"`
 	MixAmount    int64  `json:"mixamount"`
 	Participants uint32 `json:"participants"`
 	MixedOutputs uint32 `json:"mixedoutputs"`

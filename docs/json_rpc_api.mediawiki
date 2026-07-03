@@ -1904,6 +1904,7 @@ of the best block.
 !Returns
 |<code>(json array of object)</code>
 : <code>txhash</code>: <code>(string)</code> The hash of the mined coinjoin transaction.
+: <code>height</code>: <code>(numeric)</code> The height of the block that confirmed the mix.
 : <code>mixamount</code>: <code>(numeric)</code> The value of each mixed output, in atoms.
 : <code>participants</code>: <code>(numeric)</code> The number of pair requests that formed the mix.
 : <code>mixedoutputs</code>: <code>(numeric)</code> The number of mixed outputs in the coinjoin transaction.
@@ -1911,7 +1912,7 @@ of the best block.
 : <code>completed</code>: <code>(numeric)</code> The Unix timestamp at which the node observed the mix confirming.
 |-
 !Example Return
-|<code>[{"txhash":"f1d21c62...","mixamount":100000000,"participants":8,"mixedoutputs":8,"mixedvalue":800000000,"completed":1751049600}]</code>
+|<code>[{"txhash":"f1d21c62...","height":987654,"mixamount":100000000,"participants":8,"mixedoutputs":8,"mixedvalue":800000000,"completed":1751049600}]</code>
 |}
 
 ----

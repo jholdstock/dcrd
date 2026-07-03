@@ -2679,6 +2679,7 @@ func handleGetRecentMixes(_ context.Context, s *Server, _ any) (any, error) {
 		m := &mixes[i]
 		res = append(res, types.GetRecentMixesResult{
 			TxHash:       m.TxHash.String(),
+			Height:       m.Height,
 			MixAmount:    m.MixAmount,
 			Participants: uint32(m.Participants),
 			MixedOutputs: uint32(m.MixedOutputs),

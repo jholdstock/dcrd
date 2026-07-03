@@ -513,6 +513,19 @@ var helpDescsEnUS = map[string]string{
 	// GetMiningInfoCmd help.
 	"getmininginfo--synopsis": "Returns a JSON object containing mining-related information.",
 
+	// GetRecentMixes help.
+	"getrecentmixes--synopsis": "Returns summaries of recently completed mixes that this node observed confirming on-chain, ordered from most to least recent.",
+	"getrecentmixes--result0":  "JSON array of objects describing recently completed mixes.",
+
+	// GetRecentMixesResult help.
+	"getrecentmixesresult-txhash":       "Hash of the mined coinjoin transaction",
+	"getrecentmixesresult-height":       "Height of the block that confirmed the mix",
+	"getrecentmixesresult-mixamount":    "Value of each mixed output, in atoms",
+	"getrecentmixesresult-participants": "Number of pair requests that formed the mix",
+	"getrecentmixesresult-mixedoutputs": "Number of mixed outputs in the coinjoin transaction",
+	"getrecentmixesresult-mixedvalue":   "Total value of the mixed outputs, in atoms",
+	"getrecentmixesresult-completed":    "Unix timestamp at which the node observed the mix confirming",
+
 	// GetMixMessage help.
 	"getmixmessage--synopsis": "Returns a mix message if it is currently accepted by the mixpool.",
 	"getmixmessage-hash":      "Hash of the message being queried",

@@ -234,6 +234,9 @@ type MixSummary struct {
 	// TxHash is the hash of the mined coinjoin transaction.
 	TxHash chainhash.Hash
 
+	// Height is the height of the block that confirmed the mix.
+	Height uint32
+
 	// MixAmount is the value of each mixed output, in atoms.
 	MixAmount int64
 
@@ -758,7 +761,7 @@ func (p *Pool) RemoveConfirmedMixes(txHashes []chainhash.Hash) {
 
 // RemoveSpentPRs removes all pair requests that are spent by any transaction
 // input.
-func (p *Pool) RemoveSpentPRs(txs []*wire.MsgTx) {
+func (p *Pool) RemoveSpentPRs(txs []*wire.MsgTx, height uint32) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
@@ -766,7 +769,7 @@ func (p *Pool) RemoveSpentPRs(txs []*wire.MsgTx) {
 		txHash := tx.TxHash()
 		ses, ok := p.sessionsByTxHash[txHash]
 		if ok {
-			p.recordCompletedMix(ses, tx)
+			p.recordCompletedMix(ses, tx, height)
 			p.observer.removeStrikesForMix(tx)
 			p.removeSession(ses.sid, &txHash, true)
 			continue
@@ -788,7 +791,7 @@ func (p *Pool) RemoveSpentPRs(txs []*wire.MsgTx) {
 // recent mixes buffer.  The session's pair requests must still be present in
 // the pool, so this must be called before the session is removed.  The caller
 // must hold the pool mutex.
-func (p *Pool) recordCompletedMix(ses *session, tx *wire.MsgTx) {
+func (p *Pool) recordCompletedMix(ses *session, tx *wire.MsgTx, height uint32) {
 	// The mix denomination is shared by every pair request in the session.
 	var mixAmount int64
 	for _, prHash := range ses.prs {
@@ -813,6 +816,7 @@ func (p *Pool) recordCompletedMix(ses *session, tx *wire.MsgTx) {
 
 	p.recentMixes = append(p.recentMixes, MixSummary{
 		TxHash:       tx.TxHash(),
+		Height:       height,
 		MixAmount:    mixAmount,
 		Participants: len(ses.prs),
 		MixedOutputs: mixedOutputs,

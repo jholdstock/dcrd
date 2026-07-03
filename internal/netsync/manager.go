@@ -1351,8 +1351,8 @@ func (m *SyncManager) OnBlock(peer *Peer, block *dcrutil.Block) {
 		m.rejectedTxns.Reset()
 
 		// Remove expired pair requests and completed mixes from the mixpool.
-		m.cfg.MixPool.RemoveSpentPRs(msgBlock.Transactions)
-		m.cfg.MixPool.RemoveSpentPRs(msgBlock.STransactions)
+		m.cfg.MixPool.RemoveSpentPRs(msgBlock.Transactions, header.Height)
+		m.cfg.MixPool.RemoveSpentPRs(msgBlock.STransactions, header.Height)
 		m.cfg.MixPool.ExpireMessagesInBackground(header.Height)
 	}
 
