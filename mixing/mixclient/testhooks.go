@@ -1,4 +1,4 @@
-// Copyright (c) 2024 The Decred developers
+// Copyright (c) 2024-2026 The Decred developers
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
@@ -13,4 +13,5 @@ const (
 	hookBeforePeerCTPublish hook = "before CT publish"
 	hookBeforePeerSRPublish hook = "before SR publish"
 	hookBeforePeerDCPublish hook = "before DC publish"
+	hookBeforePeerCMPublish hook = "before CM publish"
 )

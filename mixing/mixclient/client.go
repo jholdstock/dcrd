@@ -1994,6 +1994,7 @@ DCs:
 		cm := wire.NewMsgMixConfirm(*p.id, sesRun.sid, 0,
 			p.coinjoin.Tx().Copy(), seenDCs)
 		p.cm = cm
+		c.testHook(hookBeforePeerCMPublish, ps, sesRun, p)
 		return nil
 	})
 	sendErr = c.sendLocalPeerMsgs(ctx, d.recvCM, sesRun, msgCM)
