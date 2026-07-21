@@ -7,6 +7,7 @@ package mixclient
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"sync"
 	"testing"
@@ -472,4 +473,225 @@ func TestDCDisruption(t *testing.T) {
 			misbehavingID = *p.id
 			p.dc.DCNet[0][1][0] ^= 1
 		})
+}
+
+// TestConfirmPhaseDeanonResistance exercises the confirm-phase deanonymization
+// attack and asserts that honest peers do not reveal their secrets.
+//
+// A malicious peer behaves honestly through KE/CT/SR/DC so that a valid
+// CoinJoin is formed, then at the confirmation phase it withholds its own
+// confirmation (so that it alone, holding its own signature plus every honest
+// peer's broadcast confirmation, could complete and broadcast the transaction)
+// while revealing its own throwaway secrets.  Before the fix, every honest
+// peer waiting for confirmations aborted into blame and unconditionally
+// revealed its own secrets, exposing each honest peer's mixed outputs
+// (DCNetMsgs) tagged with its identity for a run whose transaction was
+// publishable.
+//
+// The attacker is isolated on its own client, matching the real threat model
+// where honest peers run separate wallets.  With the fix in place no honest
+// peer reveals its secrets, because all of the honest client's local peers
+// confirmed and a publishable transaction may therefore exist.
+//
+// Liveness after excluding a disruptor (the mix still completing for the
+// remaining peers) is covered by the CT/SR/DC disruption tests; this test
+// focuses on the unlinkability invariant.
+func TestConfirmPhaseDeanonResistance(t *testing.T) {
+	requireCsppsolver(t)
+
+	l, done := useTestLogger(t)
+	t.Cleanup(done)
+
+	bc := newTestBlockchain()
+	w := newTestWallet(bc)
+
+	extendKE := func(_ *Client, ps *pairedSessions, _ *sessionRun, _ *peer) {
+		ps.deadlines.recvKE = time.Now().Add(5 * time.Second)
+	}
+
+	var mu sync.Mutex
+	var attackerID identity
+	var disruptedSid [32]byte
+	fired := make(chan struct{})
+	var fireOnce sync.Once
+
+	// The attack fires on the attacker's client only, right after the
+	// confirmation message is built and before it would be published.
+	attack := func(cc *Client, _ *pairedSessions, s *sessionRun, p *peer) {
+		fireOnce.Do(func() {
+			mu.Lock()
+			attackerID = *p.id
+			disruptedSid = s.sid
+			mu.Unlock()
+
+			t.Logf("attacker %x: withholding confirmation and revealing secrets",
+				p.id[:8])
+
+			// (1) Withhold the confirmation so honest peers cannot
+			// complete the transaction, but the attacker (holding its
+			// own signature) can.
+			p.cm = nil
+
+			// (2) Reveal the attacker's own throwaway secrets during
+			// the confirmation phase, forcing honest peers waiting on
+			// confirmations to observe ErrSecretsRevealed.
+			if err := p.signAndHash(p.rs); err != nil {
+				t.Errorf("attacker signAndHash(rs): %v", err)
+				return
+			}
+			if err := cc.wallet.SubmitMixMessage(context.Background(), p.rs); err != nil {
+				t.Logf("attacker SubmitMixMessage(rs): %v", err)
+			}
+			close(fired)
+		})
+	}
+
+	cAtk := newTestClient(w, l)
+	cAtk.testHooks = map[hook]hookFunc{
+		hookBeforeRun:           extendKE,
+		hookBeforePeerCMPublish: attack,
+	}
+	cHonest := newTestClient(w, l)
+	cHonest.testHooks = map[hook]hookFunc{
+		hookBeforeRun: extendKE,
+	}
+
+	type testPeer struct {
+		cj *CoinJoin
+	}
+	peers := []*testPeer{
+		{cj: NewCoinJoin(w.gen, nil, mixValue, testStartingHeight+10, 1)},
+		{cj: NewCoinJoin(w.gen, nil, mixValue, testStartingHeight+10, 1)},
+		{cj: NewCoinJoin(w.gen, nil, mixValue, testStartingHeight+10, 1)},
+		{cj: NewCoinJoin(w.gen, nil, mixValue, testStartingHeight+10, 1)},
+		{cj: NewCoinJoin(w.gen, nil, mixValue, testStartingHeight+10, 1)},
+	}
+	inputTx := wire.NewMsgTx()
+	for range peers {
+		script, err := w.outputScript()
+		if err != nil {
+			t.Fatal(err)
+		}
+		inputTx.AddTxOut(wire.NewTxOut(inputValue, script))
+	}
+	inputTxOutpoint := wire.OutPoint{Hash: inputTx.TxHash()}
+	for i := range peers {
+		p := peers[i]
+		inputTxOutpoint.Index = uint32(i)
+		input := wire.NewTxIn(&inputTxOutpoint, inputTx.TxOut[i].Value, nil)
+		pkScript := inputTx.TxOut[i].PkScript
+		p.cj.AddInput(input, pkScript, 0, w.privForPkScript(pkScript))
+	}
+
+	// peers[0] is the attacker (isolated on cAtk); peers[1:] are honest and
+	// hosted by cHonest.
+	attacker := peers[0]
+	honest := peers[1:]
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	doneRun := make(chan struct{})
+	go func() { cAtk.Run(ctx); doneRun <- struct{}{} }()
+	go func() { cHonest.Run(ctx); doneRun <- struct{}{} }()
+	defer func() {
+		cancel()
+		<-doneRun
+		<-doneRun
+	}()
+
+	testTick := func() {
+		select {
+		case <-ctx.Done():
+			return
+		case <-cAtk.testWaiting:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-cHonest.testWaiting:
+		}
+		tt := time.Now().Truncate(time.Second)
+		cAtk.testTick(tt)
+		cHonest.testTick(tt)
+	}
+	testTick()
+
+	go func() { _ = cAtk.Dicemix(ctx, attacker.cj) }()
+	for i := range honest {
+		p := honest[i]
+		go func() { _ = cHonest.Dicemix(ctx, p.cj) }()
+	}
+
+	go func() {
+		for {
+			testTick()
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+		}
+	}()
+
+	// Wait for the attack to fire.
+	select {
+	case <-fired:
+	case <-time.After(90 * time.Second):
+		t.Fatal("attack never fired; mix did not reach the confirmation phase")
+	}
+
+	mu.Lock()
+	atk := attackerID
+	sid := disruptedSid
+	mu.Unlock()
+
+	// Harvest revealed secrets for the disrupted run, exactly as the attacker
+	// would.  Any secrets message from an identity other than the attacker
+	// that carries mixed outputs is a deanonymization leak.  The attacker's
+	// own reveal must be observed (proving the reveal channel is being read
+	// correctly), while no honest peer's reveal may appear.
+	type leak struct {
+		id   identity
+		outs int
+	}
+	var leaks []leak
+	sawAttacker := false
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		rcv := &mixpool.Received{
+			Sid: sid,
+			RSs: make([]*wire.MsgMixSecrets, 0, len(peers)),
+		}
+		rctx, rcancel := context.WithTimeout(ctx, 500*time.Millisecond)
+		_ = w.mixpool.Receive(rctx, rcv)
+		rcancel()
+
+		leaks = leaks[:0]
+		for _, rs := range rcv.RSs {
+			if rs.Identity == atk {
+				sawAttacker = true
+				continue
+			}
+			if len(rs.DCNetMsgs) == 0 {
+				continue
+			}
+			leaks = append(leaks, leak{rs.Identity, len(rs.DCNetMsgs)})
+		}
+		if len(leaks) > 0 {
+			break
+		}
+		time.Sleep(400 * time.Millisecond)
+	}
+
+	if !sawAttacker {
+		t.Fatal("attacker's own revealed secrets were not observed; test is not exercising the reveal path")
+	}
+	for _, lk := range leaks {
+		t.Errorf("honest peer %s revealed %d mixed outputs (deanonymization leak)",
+			hex.EncodeToString(lk.id[:8]), lk.outs)
+	}
+	if len(leaks) == 0 {
+		t.Logf("no honest peer revealed secrets; confirm-phase deanonymization prevented")
+	}
 }

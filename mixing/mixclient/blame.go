@@ -1,4 +1,4 @@
-// Copyright (c) 2024 The Decred developers
+// Copyright (c) 2024-2026 The Decred developers
 // Use of this source code is governed by an ISC
 // license that can be found in the LICENSE file.
 
@@ -50,6 +50,60 @@ func (e blamedIdentities) String() string {
 	return buf.String()
 }
 
+// confirmedLocalCoinjoin returns the coinjoin of an active local peer that
+// produced a valid confirmation, along with true, if every active local peer
+// confirmed.  When every local peer confirmed, a fully-signed CoinJoin
+// transaction for the run may exist and revealing secrets could be unsafe.
+// The returned coinjoin holds the mixed outputs that were confirmed.
+func confirmedLocalCoinjoin(sesRun *sessionRun) (*CoinJoin, bool) {
+	var cj *CoinJoin
+	for _, p := range sesRun.localPeers {
+		if p.isRemoteOrCanceled() {
+			continue
+		}
+		if p.cm == nil {
+			return nil, false
+		}
+		if cj == nil {
+			cj = p.coinjoin
+		}
+	}
+	return cj, cj != nil
+}
+
+// revealsExplainedByValidMix reports whether every revealer's disclosed mixed
+// outputs are already present in the confirmed coinjoin.  When true, each
+// revealer could have confirmed the run instead of revealing (its outputs are
+// in a valid mix), so the reveal was gratuitous and a publishable transaction
+// may exist.  When false, at least one revealer's output is missing from the
+// mix, meaning it genuinely could not confirm and no valid transaction exists,
+// so revealing secrets to assign blame is safe.
+func revealsExplainedByValidMix(cj *CoinJoin, revealers []*wire.MsgMixSecrets) bool {
+	mixed := make(map[[20]byte]struct{})
+	for _, out := range cj.tx.TxOut {
+		if out.Value != cj.mixValue || out.Version != 0 {
+			continue
+		}
+		if len(out.PkScript) != 25 {
+			continue
+		}
+		var h [20]byte
+		copy(h[:], out.PkScript[3:23])
+		mixed[h] = struct{}{}
+	}
+	for _, rs := range revealers {
+		if len(rs.DCNetMsgs) == 0 {
+			return false
+		}
+		for _, m := range rs.DCNetMsgs {
+			if _, ok := mixed[m]; !ok {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func (c *Client) blame(ctx context.Context, sesRun *sessionRun) (err error) {
 	sesRun.logf("running blame assignment")
 
@@ -67,6 +121,71 @@ func (c *Client) blame(ctx context.Context, sesRun *sessionRun) (err error) {
 			c.log(blamed)
 		}
 	}()
+
+	// Preserve the DiceMix-Light invariant that secrets are only revealed
+	// for a run whose CoinJoin transaction cannot be published.  A peer's
+	// revealed secrets expose the mixed outputs (HASH160s) it contributed
+	// to the DC-net, tagged with its identity; revealing them for a run
+	// whose transaction can still be broadcast deanonymizes the peer.
+	//
+	// When every local peer produced a valid confirmation, a fully-signed
+	// transaction may already exist: a remote peer can withhold only its own
+	// confirmation while collecting everyone else's from the mixpool, and
+	// then broadcast the CoinJoin itself.  In that case, examine the secrets
+	// that induced this blame round.  A revealer whose disclosed outputs are
+	// all present in the confirmed mix could have confirmed instead of
+	// revealing, so its reveal is gratuitous and a publishable transaction
+	// exists -- refuse to reveal and blame the revealers by identity.  If
+	// instead some revealer's output is missing from the mix, it genuinely
+	// could not confirm (its slot was disrupted); no valid transaction exists
+	// and the normal reveal-and-blame path below runs to identify the
+	// disruptor.
+	if cj, ok := confirmedLocalCoinjoin(sesRun); ok {
+		// The secrets that induced this blame round are already in the
+		// mixpool, so collect what is currently present with a short
+		// timeout rather than blocking for the full blame window; a
+		// longer wait would delay peers that fall through to the normal
+		// reveal path and desynchronize them from the other peers.
+		rcv := new(mixpool.Received)
+		rcv.Sid = sesRun.sid
+		rcv.RSs = make([]*wire.MsgMixSecrets, 0, len(prs))
+		rcvCtx, rcvCtxCancel := context.WithTimeout(ctx, 2*time.Second)
+		_ = mp.Receive(rcvCtx, rcv)
+		rcvCtxCancel()
+
+		var revealers []*wire.MsgMixSecrets
+		for _, rs := range rcv.RSs {
+			if _, ok := sesRun.localPeers[rs.Identity]; ok {
+				continue
+			}
+			revealers = append(revealers, rs)
+		}
+
+		switch {
+		case len(revealers) == 0:
+			// Blame was induced by secrets that are no longer
+			// retrievable.  With every local peer confirmed a
+			// publishable transaction may exist, so do not reveal;
+			// abort rather than risk deanonymizing local peers.
+			return errBlameFailed
+
+		case revealsExplainedByValidMix(cj, revealers):
+			// Every revealer could have confirmed the run (its
+			// outputs are in the confirmed mix), so the reveal is
+			// gratuitous and a publishable transaction exists.  Do
+			// not reveal; blame the revealers by identity.
+			for _, rs := range revealers {
+				sesRun.logf("blaming %x for revealing secrets on a publishable run",
+					rs.Identity[:])
+				blamed = append(blamed, rs.Identity)
+			}
+			return blamed
+		}
+
+		// Otherwise a revealer's output is missing from the mix: it
+		// genuinely could not confirm, no valid transaction exists, and
+		// revealing to assign blame is safe.  Fall through.
+	}
 
 	deadline := time.Now().Add(timeoutDuration)
 
